@@ -9,14 +9,14 @@
 ```
 Intensify/
 ├── backend/          ← Spring Boot 4.1 (Java 21)
-├── frontend/         ← React.js (Week 2)
+├── frontend/         ← React.js 
 ├── docs/             ← Architecture, ER diagram, API docs
 └── PRD.md            ← Product Requirements Document
 ```
 
 ---
 
-## Backend Setup (Week 1 — Active)
+## Backend Setup
 
 ### Prerequisites
 - Java 21
@@ -84,9 +84,9 @@ React SPA ──HTTPS/JWT──▶ Spring Boot Monolith
 
 ## Key Design Decisions
 
-- **Evidence Verification (PRD §11.7):** Every AI-generated feedback item is verified against the candidate's actual text using exact substring matching (case-insensitive) with an 85% Levenshtein similarity fallback. Unverified evidence is discarded silently — never shown to the user.
-- **Deterministic Scoring (PRD §11.5):** `overallScore` is always recomputed by the backend as the mean of applicable dimension scores. The AI's returned value is a hint only.
-- **Prompt Injection Mitigation (PRD §18):** Candidate text is wrapped in `<candidate_response>` XML tags with an explicit system-prompt instruction to ignore any instructions found inside.
+- **Evidence Verification (PRD 11.7):** Every AI-generated feedback item is verified against the candidate's actual text using exact substring matching (case-insensitive) with an 85% Levenshtein similarity fallback. Unverified evidence is discarded silently — never shown to the user.
+- **Deterministic Scoring (PRD 11.5):** `overallScore` is always recomputed by the backend as the mean of applicable dimension scores. The AI's returned value is a hint only.
+- **Prompt Injection Mitigation (PRD 18):** Candidate text is wrapped in `<candidate_response>` XML tags with an explicit system-prompt instruction to ignore any instructions found inside.
 - **FAILED State:** Sessions that fail AI evaluation transition to `FAILED` with a `failure_reason` (`TIMEOUT` | `VALIDATION_FAILED` | `PROVIDER_ERROR`). Users see a recovery message on the frontend.
 
 ---
@@ -100,10 +100,3 @@ React SPA ──HTTPS/JWT──▶ Spring Boot Monolith
 
 ---
 
-## Development Roadmap
-
-| Week | Focus |
-|------|-------|
-| **Week 1** | ✅ Backend foundation: entities, security (JWT), question seeder, session lifecycle, AI integration |
-| **Week 2** | Core practice flow + React frontend |
-| **Week 3** | Follow-up, progress dashboard, polish, deployment |
