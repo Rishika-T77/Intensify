@@ -32,8 +32,8 @@ public class GeminiProvider implements AIProvider {
     public GeminiProvider(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         var requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(15000);
-        requestFactory.setReadTimeout(20000);
+        requestFactory.setConnectTimeout(8000);
+        requestFactory.setReadTimeout(15000);
         this.restClient = RestClient.builder()
                 .requestFactory(requestFactory)
                 .build();
