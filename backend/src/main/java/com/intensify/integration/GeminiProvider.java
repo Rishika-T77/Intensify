@@ -7,12 +7,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Concrete Google Gemini LLM implementation of AIProvider.
- * Uses Gemini REST API (gemini-2.0-flash) with structured JSON response_mime_type.
+ * Uses Gemini REST API with automatic model fallback for 503 high-demand spikes and version deprecation.
  */
 @Component("geminiProvider")
 @Slf4j
@@ -22,7 +24,7 @@ public class GeminiProvider implements AIProvider {
     private String apiKey;
 
     @Value("${app.ai.gemini.model}")
-    private String model;
+    private String configuredModel;
 
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
@@ -30,8 +32,8 @@ public class GeminiProvider implements AIProvider {
     public GeminiProvider(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         var requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(25000);
-        requestFactory.setReadTimeout(25000);
+        requestFactory.setConnectTimeout(15000);
+        requestFactory.setReadTimeout(20000);
         this.restClient = RestClient.builder()
                 .requestFactory(requestFactory)
                 .build();
@@ -40,10 +42,17 @@ public class GeminiProvider implements AIProvider {
     @Override
     public EvaluationResult evaluate(String systemPrompt, String userContent) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new AIProviderException("Gemini API key is missing. Please set GEMINI_API_KEY in your .env file.");
+            throw new AIProviderException("Gemini API key is missing. Please set GEMINI_API_KEY in environment variables.");
         }
 
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
+        // Ordered list of candidate models to try on 503/404 errors
+        Set<String> modelsToTry = new LinkedHashSet<>();
+        if (configuredModel != null && !configuredModel.isBlank()) {
+            modelsToTry.add(configuredModel);
+        }
+        modelsToTry.add("gemini-3.6-flash");
+        modelsToTry.add("gemini-flash-latest");
+        modelsToTry.add("gemini-1.5-flash-latest");
 
         Map<String, Object> requestBody = Map.of(
                 "system_instruction", Map.of(
@@ -61,8 +70,12 @@ public class GeminiProvider implements AIProvider {
                 )
         );
 
-        int maxAttempts = 3;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        Exception lastException = null;
+
+        for (String targetModel : modelsToTry) {
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/" + targetModel + ":generateContent?key=" + apiKey;
+            log.info("Attempting Gemini API evaluation with model: {}", targetModel);
+
             try {
                 String responseBody = restClient.post()
                         .uri(url)
@@ -88,20 +101,19 @@ public class GeminiProvider implements AIProvider {
                 }
 
                 String jsonText = extractJson(textNode.asText());
-                return objectMapper.readValue(jsonText, EvaluationResult.class);
+                EvaluationResult result = objectMapper.readValue(jsonText, EvaluationResult.class);
+                log.info("Gemini evaluation succeeded with model: {}", targetModel);
+                return result;
 
             } catch (Exception e) {
-                boolean is503 = e.getMessage() != null && e.getMessage().contains("503");
-                if (is503 && attempt < maxAttempts) {
-                    log.warn("Gemini 503 high demand spike on attempt {}/{}. Retrying in 2 seconds...", attempt, maxAttempts);
-                    try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    continue;
-                }
-                log.error("Gemini provider call failed (attempt {}/{}): {}", attempt, maxAttempts, e.getMessage());
-                throw new AIProviderException("Gemini provider call failed: " + e.getMessage(), e);
+                log.warn("Gemini evaluation failed with model {} ({}). Trying next candidate...", targetModel, e.getMessage());
+                lastException = e;
             }
         }
-        throw new AIProviderException("Gemini provider failed after max attempts.");
+
+        log.error("All Gemini model candidates failed.");
+        throw new AIProviderException("Gemini provider failed across all candidate models: " +
+                (lastException != null ? lastException.getMessage() : "Unknown error"), lastException);
     }
 
     private String extractJson(String response) {
